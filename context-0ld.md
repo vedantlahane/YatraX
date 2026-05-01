@@ -12,10 +12,6 @@ YatraX (Yatra = Journey in Sanskrit + X = Next-gen) is a mobile-first Progressiv
 
 The app's entire visual identity — colors, animation speeds, glow intensities — shifts dynamically based on the current ML-calculated safety score, making the interface itself a safety indicator. The app feels alive and responsive to the environment.
 
-**Target region**: Assam, India (expandable to other Indian states, then global)
-**Target users**: Domestic and international tourists, solo travelers, female travelers, elderly tourists, adventure travelers in remote/wilderness areas
-**Platform**: Progressive Web App — installable, works offline, feels native
-**Status**: In active development, refactoring from MVP to production architecture
 
 ---
 
