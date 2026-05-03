@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { z } from 'zod';
 
 const EnvSceama = z.object({
-    Node_Env: z.enum(['development', 'production', 'test']).default('development'),
+    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
     PORT: z.coerce.number().int().positive().default(8081),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 

@@ -4,7 +4,7 @@ export const logger = pino({
   level: env.LOG_LEVEL,
   base: { service: 'gateway' },
   timestamp: pino.stdTimeFunctions.isoTime,
-  ...(env.Node_Env === 'development' && {
+  ...(env.NODE_ENV === 'development' && {
     transport: { target: 'pino-pretty', options: { colorize: true } },
   }),
 });
