@@ -23,6 +23,8 @@ export const tourists = pgTable(
     phone: text().notNull(),
     passportNumber: text().notNull(),
     passwordHash: text().notNull(),
+    resetTokenHash: text(),
+    resetTokenExpires: timestamp({ withTimezone: true }),
 
     dateOfBirth: text(),
     address: text(),
@@ -49,6 +51,7 @@ export const tourists = pgTable(
     isActive: boolean().notNull().default(true),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    
   },
   (t) => [
     index('tourists_email_idx').on(t.email),

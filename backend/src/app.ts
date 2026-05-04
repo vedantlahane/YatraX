@@ -7,6 +7,7 @@ import { pinoHttp } from 'pino-http';
 import { env } from './shared/config/env.js';
 import { logger } from './shared/logger/index.js';
 import { errorHandler } from './shared/http/middleware/error-handler.js';
+import authRoutes from './modules/auth/auth.routes.js';
 
 export function buildApp() {
   const app = express();
@@ -24,7 +25,7 @@ export function buildApp() {
   });
 
   // modules will be mounted here, e.g.:
-  // app.use('/api/auth', authRoutes);
+  app.use('/api/auth', authRoutes);
   // app.use('/api/safety', safetyRoutes);
 
   app.use(errorHandler);
