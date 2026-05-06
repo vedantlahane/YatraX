@@ -14,6 +14,7 @@ import notificationRoutes from "./notifications.js";
 import advisoryRoutes from "./advisories.js";
 import auditLogRoutes from "./auditLog.js";
 import safetyRoutes from "./safety.js";
+import broadcastRoutes from "./broadcast.js";
 
 const router = Router();
 
@@ -22,6 +23,7 @@ router.use("/api/admin/police", adminPoliceRoutes);
 router.use("/api/admin/hospitals", adminHospitalRoutes);
 router.use("/api/admin/advisories", advisoryRoutes);
 router.use("/api/admin/audit-logs", auditLogRoutes);
+router.use("/api/admin/broadcast", broadcastRoutes);
 router.use("/api/auth", authRoutes);
 router.use("/api", dashboardRoutes);
 router.use("/api/admin/risk-zones", riskZoneRoutes);

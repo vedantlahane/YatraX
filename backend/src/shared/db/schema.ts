@@ -14,7 +14,14 @@ import {
   customType,
 } from 'drizzle-orm/pg-core';
 
-// We'll add tables module-by-module. Start with tourists + sessions to prove the pipe.
+// ─── PostGIS geography type ──────────────────────────────────────────────────
+const geography = customType<{ data: string }>({
+  dataType() {
+    return 'geography(Geometry, 4326)';
+  },
+});
+
+// ─── TOURISTS ────────────────────────────────────────────────────────────────
 export const tourists = pgTable(
   'tourists',
   {
@@ -52,23 +59,16 @@ export const tourists = pgTable(
     isActive: boolean().notNull().default(true),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-    
   },
   (t) => [
     index('tourists_email_idx').on(t.email),
     index('tourists_id_hash_idx').on(t.idHash),
   ],
 );
-
 export type Tourist = typeof tourists.$inferSelect;
 export type NewTourist = typeof tourists.$inferInsert;
 
-const geography = customType<{ data: string }>({
-  dataType() {
-    return 'geography(Geometry, 4326)';
-  },
-});
-
+// ─── RISK ZONES ───────────────────────────────────────────────────────────────
 export const riskZones = pgTable(
   'risk_zones',
   {
@@ -100,10 +100,10 @@ export const riskZones = pgTable(
     index('risk_zones_active_idx').on(t.active),
   ],
 );
-
 export type RiskZone = typeof riskZones.$inferSelect;
 export type NewRiskZone = typeof riskZones.$inferInsert;
 
+// ─── POLICE DEPARTMENTS ───────────────────────────────────────────────────────
 export const policeDepartments = pgTable(
   'police_departments',
   {
@@ -138,6 +138,7 @@ export const policeDepartments = pgTable(
 export type PoliceDepartment = typeof policeDepartments.$inferSelect;
 export type NewPoliceDepartment = typeof policeDepartments.$inferInsert;
 
+// ─── HOSPITALS ────────────────────────────────────────────────────────────────
 export const hospitals = pgTable(
   'hospitals',
   {
@@ -177,6 +178,7 @@ export const hospitals = pgTable(
 export type Hospital = typeof hospitals.$inferSelect;
 export type NewHospital = typeof hospitals.$inferInsert;
 
+// ─── ALERTS ───────────────────────────────────────────────────────────────────
 export const alerts = pgTable(
   'alerts',
   {
@@ -216,6 +218,7 @@ export const alerts = pgTable(
 export type Alert = typeof alerts.$inferSelect;
 export type NewAlert = typeof alerts.$inferInsert;
 
+// ─── TOURIST LOCATION LOGS ────────────────────────────────────────────────────
 export const touristLocationLogs = pgTable(
   'tourist_location_logs',
   {
@@ -237,3 +240,93 @@ export const touristLocationLogs = pgTable(
 );
 export type TouristLocationLog = typeof touristLocationLogs.$inferSelect;
 export type NewTouristLocationLog = typeof touristLocationLogs.$inferInsert;
+
+// ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: bigserial({ mode: 'number' }).primaryKey(),
+    touristId: uuid().notNull().references(() => tourists.id, { onDelete: 'cascade' }),
+    title: text().notNull(),
+    message: text().notNull(),
+    type: text().notNull().default('system'),       // 'system' | 'alert' | 'broadcast' | 'advisory'
+    priority: text().notNull().default('normal'),   // 'low' | 'normal' | 'high' | 'urgent'
+    read: boolean().notNull().default(false),
+    sourceTab: text().notNull().default('home'),
+    broadcastTarget: text(),                        // 'all' | 'tourist:<id>' | 'zone:<id>'
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('notif_tourist_read_idx').on(t.touristId, t.read),
+    index('notif_created_idx').on(t.createdAt),
+  ],
+);
+export type Notification = typeof notifications.$inferSelect;
+export type NewNotification = typeof notifications.$inferInsert;
+
+// ─── TRAVEL ADVISORIES ───────────────────────────────────────────────────────
+export const travelAdvisories = pgTable(
+  'travel_advisories',
+  {
+    id: bigserial({ mode: 'number' }).primaryKey(),
+    title: text().notNull(),
+    body: text().notNull(),
+    severity: text().notNull().default('INFO'),     // 'INFO' | 'WARNING' | 'CRITICAL'
+    affectedArea: text(),
+    source: text().notNull().default('admin'),
+    active: boolean().notNull().default(true),
+    expiresAt: timestamp({ withTimezone: true }),
+    createdBy: uuid().references(() => policeDepartments.id, { onDelete: 'set null' }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('advisory_active_idx').on(t.active),
+    index('advisory_severity_idx').on(t.severity),
+  ],
+);
+export type TravelAdvisory = typeof travelAdvisories.$inferSelect;
+export type NewTravelAdvisory = typeof travelAdvisories.$inferInsert;
+
+// ─── AUDIT LOGS ───────────────────────────────────────────────────────────────
+export const auditLogs = pgTable(
+  'audit_logs',
+  {
+    id: bigserial({ mode: 'number' }).primaryKey(),
+    actor: text().notNull(),                        // UUID or 'system'
+    actorType: text().notNull().default('admin'),   // 'admin' | 'system'
+    action: text().notNull(),
+    targetCollection: text().notNull(),
+    targetId: text().notNull(),
+    changes: jsonb().$type<Record<string, unknown>>(),
+    ipAddress: text(),
+    userAgent: text(),
+    timestamp: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('audit_actor_idx').on(t.actor),
+    index('audit_action_idx').on(t.action),
+    index('audit_ts_idx').on(t.timestamp),
+  ],
+);
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type NewAuditLog = typeof auditLogs.$inferInsert;
+
+// ─── BLOCKCHAIN LOGS ──────────────────────────────────────────────────────────
+export const blockchainLogs = pgTable(
+  'blockchain_logs',
+  {
+    id: bigserial({ mode: 'number' }).primaryKey(),
+    touristId: uuid().notNull().references(() => tourists.id, { onDelete: 'cascade' }),
+    dataHash: text().notNull(),
+    transactionId: text().notNull(),
+    status: text().notNull().default('SUCCESS_ISSUED_ON_TESTNET'),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('blockchain_tourist_idx').on(t.touristId),
+    index('blockchain_hash_idx').on(t.dataHash),
+  ],
+);
+export type BlockchainLog = typeof blockchainLogs.$inferSelect;
+export type NewBlockchainLog = typeof blockchainLogs.$inferInsert;
