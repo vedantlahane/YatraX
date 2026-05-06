@@ -9,6 +9,7 @@ import { logger } from './shared/logger/index.js';
 import { errorHandler } from './shared/http/middleware/error-handler.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import { touristSelfRouter, touristAdminRouter } from './modules/tourist/tourist.routes.js';
+import { riskZonePublicRouter, riskZoneAdminRouter } from './modules/risk-zone/risk-zone.routes.js';
 
 export function buildApp() {
   const app = express();
@@ -29,6 +30,8 @@ export function buildApp() {
   app.use('/api/auth', authRoutes);
   app.use('/api/tourists', touristSelfRouter);
   app.use('/api/admin/tourists', touristAdminRouter);
+  app.use('/api/risk-zones', riskZonePublicRouter);
+  app.use('/api/admin/risk-zones', riskZoneAdminRouter);
   // app.use('/api/safety', safetyRoutes);
 
   app.use(errorHandler);

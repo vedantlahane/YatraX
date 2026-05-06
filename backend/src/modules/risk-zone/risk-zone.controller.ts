@@ -25,6 +25,11 @@ export const riskZoneController = {
     res.json({ ok: true, zones });
   },
 
+  async listActive(_req: Request, res: Response): Promise<void> {
+    const zones = await riskZoneService.listActive();
+    res.json({ ok: true, zones });
+  },
+
   async getById(req: Request, res: Response): Promise<void> {
     const { zoneId } = req.params as unknown as ZoneIdParam;
     const zone = await riskZoneService.getById(zoneId);

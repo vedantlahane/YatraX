@@ -152,7 +152,7 @@ export const riskZoneRepo = {
         distanceMeters: sql<number>`ST_Distance(${riskZones.geom}, ${point})::float8`,
       })
       .from(riskZones)
-      .where(and(...conditions))
+      .where(and(...(conditions as any)))
       .orderBy(sql`ST_Distance(${riskZones.geom}, ${point}) ASC`);
 
     return rows;

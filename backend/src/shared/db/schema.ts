@@ -62,3 +62,44 @@ export const tourists = pgTable(
 
 export type Tourist = typeof tourists.$inferSelect;
 export type NewTourist = typeof tourists.$inferInsert;
+
+const geography = customType<{ data: string }>({
+  dataType() {
+    return 'geography(Geometry, 4326)';
+  },
+});
+
+export const riskZones = pgTable(
+  'risk_zones',
+  {
+    id: bigserial({ mode: 'number' }).primaryKey(),
+    name: text().notNull(),
+    description: text(),
+
+    shapeType: text().notNull(),
+
+    centerLat: doublePrecision(),
+    centerLng: doublePrecision(),
+    radiusMeters: integer(),
+
+    polygonCoordinates: jsonb().$type<number[][]>(),
+
+    geom: geography().notNull(),
+
+    riskLevel: text().notNull().default('MEDIUM'),
+    active: boolean().notNull().default(true),
+    category: text(),
+    source: text().notNull().default('admin'),
+    expiresAt: timestamp({ withTimezone: true }),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('risk_zones_geom_idx').using('gist', t.geom),
+    index('risk_zones_active_idx').on(t.active),
+  ],
+);
+
+export type RiskZone = typeof riskZones.$inferSelect;
+export type NewRiskZone = typeof riskZones.$inferInsert;
