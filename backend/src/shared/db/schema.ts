@@ -103,3 +103,137 @@ export const riskZones = pgTable(
 
 export type RiskZone = typeof riskZones.$inferSelect;
 export type NewRiskZone = typeof riskZones.$inferInsert;
+
+export const policeDepartments = pgTable(
+  'police_departments',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    name: text().notNull(),
+    email: text().notNull().unique(),
+    passwordHash: text().notNull(),
+    departmentCode: text().notNull().unique(),
+
+    latitude: doublePrecision().notNull(),
+    longitude: doublePrecision().notNull(),
+    geom: geography().notNull(),
+
+    city: text().notNull(),
+    district: text().notNull(),
+    state: text().notNull(),
+    contactNumber: text().notNull(),
+
+    stationType: text().notNull().default('station'),
+    jurisdictionRadiusKm: integer().notNull().default(10),
+    officerCount: integer().notNull().default(0),
+    isActive: boolean().notNull().default(true),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('police_geom_idx').using('gist', t.geom),
+    index('police_active_idx').on(t.isActive),
+  ],
+);
+export type PoliceDepartment = typeof policeDepartments.$inferSelect;
+export type NewPoliceDepartment = typeof policeDepartments.$inferInsert;
+
+export const hospitals = pgTable(
+  'hospitals',
+  {
+    id: bigserial({ mode: 'number' }).primaryKey(),
+    name: text().notNull(),
+
+    latitude: doublePrecision().notNull(),
+    longitude: doublePrecision().notNull(),
+    geom: geography().notNull(),
+
+    contact: text().notNull(),
+    type: text().notNull().default('hospital'),
+    tier: text(),
+    emergency: boolean().notNull().default(false),
+
+    city: text().notNull(),
+    district: text().notNull(),
+    state: text().notNull(),
+
+    specialties: text().array(),
+    bedCapacity: integer().notNull().default(0),
+    availableBeds: integer().notNull().default(0),
+    operatingHours: jsonb().$type<{ open?: string; close?: string; is24Hours?: boolean }>(),
+    ambulanceAvailable: boolean().notNull().default(false),
+
+    isActive: boolean().notNull().default(true),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('hospitals_geom_idx').using('gist', t.geom),
+    index('hospitals_active_idx').on(t.isActive),
+    index('hospitals_type_idx').on(t.type),
+  ],
+);
+export type Hospital = typeof hospitals.$inferSelect;
+export type NewHospital = typeof hospitals.$inferInsert;
+
+export const alerts = pgTable(
+  'alerts',
+  {
+    id: bigserial({ mode: 'number' }).primaryKey(),
+    touristId: uuid().notNull().references(() => tourists.id, { onDelete: 'cascade' }),
+
+    alertType: text().notNull(),
+    priority: text().notNull().default('MEDIUM'),
+    status: text().notNull().default('OPEN'),
+
+    message: text(),
+    media: text().array(),
+
+    latitude: doublePrecision(),
+    longitude: doublePrecision(),
+    geom: geography(),
+
+    preAlertTriggered: boolean().notNull().default(false),
+    escalationLevel: integer().notNull().default(1),
+
+    nearestStationId: uuid().references(() => policeDepartments.id, { onDelete: 'set null' }),
+    resolvedBy: uuid().references(() => policeDepartments.id, { onDelete: 'set null' }),
+    resolvedAt: timestamp({ withTimezone: true }),
+    cancelledAt: timestamp({ withTimezone: true }),
+    responseTimeMs: integer(),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('alerts_geom_idx').using('gist', t.geom),
+    index('alerts_status_idx').on(t.status),
+    index('alerts_tourist_status_idx').on(t.touristId, t.status),
+    index('alerts_created_idx').on(t.createdAt),
+  ],
+);
+export type Alert = typeof alerts.$inferSelect;
+export type NewAlert = typeof alerts.$inferInsert;
+
+export const touristLocationLogs = pgTable(
+  'tourist_location_logs',
+  {
+    id: bigserial({ mode: 'number' }).primaryKey(),
+    touristId: uuid().notNull().references(() => tourists.id, { onDelete: 'cascade' }),
+    latitude: doublePrecision().notNull(),
+    longitude: doublePrecision().notNull(),
+    geom: geography().notNull(),
+    speed: doublePrecision(),
+    heading: doublePrecision(),
+    accuracy: doublePrecision(),
+    safetyScoreAtTime: integer().notNull().default(100),
+    timestamp: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('loc_log_tourist_ts_idx').on(t.touristId, t.timestamp),
+    index('loc_log_geom_idx').using('gist', t.geom),
+  ],
+);
+export type TouristLocationLog = typeof touristLocationLogs.$inferSelect;
+export type NewTouristLocationLog = typeof touristLocationLogs.$inferInsert;

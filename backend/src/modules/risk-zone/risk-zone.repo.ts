@@ -15,7 +15,7 @@ function polygonWkt(coords: number[][]): string {
 
 function geomFromInput(input: Pick<CreateRiskZoneInput, 'shapeType'> & Partial<CreateRiskZoneInput>) {
   if (input.shapeType === 'circle') {
-    return sql`ST_GeogFromText(${pointWkt(input.centerLat!, input.centerLng!)})`;
+    return sql`ST_Buffer(ST_GeogFromText(${pointWkt(input.centerLat!, input.centerLng!)}), ${input.radiusMeters!})`;
   }
   return sql`ST_GeogFromText(${polygonWkt(input.polygonCoordinates!)})`;
 }
@@ -96,7 +96,7 @@ export const riskZoneRepo = {
         set.centerLng = centerLng;
         set.radiusMeters = radiusMeters;
         set.polygonCoordinates = null;
-        set.geom = sql`ST_GeogFromText(${pointWkt(centerLat, centerLng)})`;
+        set.geom = sql`ST_Buffer(ST_GeogFromText(${pointWkt(centerLat, centerLng)}), ${radiusMeters})`;
       } else {
         const coords = patch.polygonCoordinates ?? existing.polygonCoordinates;
         if (!coords || coords.length < 3) {

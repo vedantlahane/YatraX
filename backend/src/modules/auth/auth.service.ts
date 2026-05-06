@@ -16,9 +16,11 @@ import type {
 const sha256 = (s: string): string => createHash('sha256').update(s).digest('hex');
 
 function issueToken(touristId: string): string {
-  return jwt.sign({ sub: touristId, role: 'tourist' as const }, env.JWT_SECRET, {
-    expiresIn: env.JWT_EXPIRY as SignOptions['expiresIn'],
-  });
+  return jwt.sign(
+    { sub: touristId, role: 'tourist' as const },
+    env.JWT_SECRET,
+    { expiresIn: env.JWT_EXPIRY } as unknown as SignOptions,
+  );
 }
 
 function buildIdHash(passport: string, phone: string): string {
@@ -58,7 +60,7 @@ export const authService = {
       idHash,
       idExpiry,
       lastSeen: new Date(),
-      ...defined({
+      ...(defined({
         dateOfBirth: input.dateOfBirth,
         address: input.address,
         gender: input.gender,
@@ -67,7 +69,7 @@ export const authService = {
         bloodType: input.bloodType,
         allergies: input.allergies,
         medicalConditions: input.medicalConditions,
-      }),
+      }) as Partial<NewTourist>),
     };
 
     const tourist = await authRepo.create(insert);

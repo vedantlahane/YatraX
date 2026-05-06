@@ -1,11 +1,11 @@
 import { rateLimit, type Options } from 'express-rate-limit';
-import { RedisStore } from 'rate-limit-redis';
+import { RedisStore, type RedisReply } from 'rate-limit-redis';
 import { redis } from '../../cache/redis.js';
 
 const baseStore = (): Options['store'] =>
   new RedisStore({
     // ioredis adapter — variadic `call` signature matches what RedisStore expects
-    sendCommand: (...args: string[]) => redis.call(...args) as Promise<unknown>,
+    sendCommand: (...args: string[]) => redis.call(...(args as [string, ...string[]])) as Promise<RedisReply>,
     prefix: 'rl:',
   });
 

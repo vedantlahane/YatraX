@@ -9,7 +9,11 @@ import { logger } from './shared/logger/index.js';
 import { errorHandler } from './shared/http/middleware/error-handler.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import { touristSelfRouter, touristAdminRouter } from './modules/tourist/tourist.routes.js';
+import { alertActionRouter, alertAdminRouter } from './modules/alert/alert.routes.js';
 import { riskZonePublicRouter, riskZoneAdminRouter } from './modules/risk-zone/risk-zone.routes.js';
+import safetyRoutes from './modules/safety/safety.routes.js';
+import { adminAuthRouter, policePublicRouter, policeAdminRouter } from './modules/police/police.routes.js';
+import { hospitalPublicRouter, hospitalAdminRouter } from './modules/hospital/hospital.routes.js';
 
 export function buildApp() {
   const app = express();
@@ -30,9 +34,16 @@ export function buildApp() {
   app.use('/api/auth', authRoutes);
   app.use('/api/tourists', touristSelfRouter);
   app.use('/api/admin/tourists', touristAdminRouter);
+  app.use('/api/action', alertActionRouter);
+  app.use('/api/admin/alerts', alertAdminRouter);
   app.use('/api/risk-zones', riskZonePublicRouter);
   app.use('/api/admin/risk-zones', riskZoneAdminRouter);
-  // app.use('/api/safety', safetyRoutes);
+  app.use('/api/v1/safety', safetyRoutes);
+  app.use('/api/admin', adminAuthRouter);
+  app.use('/api/police-stations', policePublicRouter);
+  app.use('/api/admin/police', policeAdminRouter);
+  app.use('/api/hospitals', hospitalPublicRouter);
+  app.use('/api/admin/hospitals', hospitalAdminRouter);
 
   app.use(errorHandler);
   return app;

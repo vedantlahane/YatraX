@@ -64,7 +64,12 @@ export const touristService = {
   },
 
   async list(opts: { page: number; limit: number; search?: string | undefined }) {
-    const { items, total } = await touristRepo.list(opts);
+    const repoArgs = {
+      page: opts.page,
+      limit: opts.limit,
+      ...(opts.search ? { search: opts.search } : {}),
+    };
+    const { items, total } = await touristRepo.list(repoArgs);
     return {
       items: items.map(toPublic),
       page: opts.page,
