@@ -8,6 +8,7 @@ import { env } from './shared/config/env.js';
 import { logger } from './shared/logger/index.js';
 import { errorHandler } from './shared/http/middleware/error-handler.js';
 import authRoutes from './modules/auth/auth.routes.js';
+import { touristSelfRouter, touristAdminRouter } from './modules/tourist/tourist.routes.js';
 
 export function buildApp() {
   const app = express();
@@ -26,6 +27,8 @@ export function buildApp() {
 
   // modules will be mounted here, e.g.:
   app.use('/api/auth', authRoutes);
+  app.use('/api/tourists', touristSelfRouter);
+  app.use('/api/admin/tourists', touristAdminRouter);
   // app.use('/api/safety', safetyRoutes);
 
   app.use(errorHandler);

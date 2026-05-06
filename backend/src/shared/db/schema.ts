@@ -11,6 +11,7 @@ import {
   doublePrecision,
   bigserial,
   index,
+  customType,
 } from 'drizzle-orm/pg-core';
 
 // We'll add tables module-by-module. Start with tourists + sessions to prove the pipe.
