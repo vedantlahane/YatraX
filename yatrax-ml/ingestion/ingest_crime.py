@@ -17,8 +17,23 @@ from config.settings import RAW_CRIME, PROCESSED_DIR, RANDOM_SEED
 
 
 # Known column name mappings across different NCRB datasets
-DISTRICT_COL_NAMES = ["district", "district_name", "District", "DISTRICT"]
-STATE_COL_NAMES = ["state", "state_name", "State", "STATE_UT", "state_ut"]
+DISTRICT_COL_NAMES = [
+    "district",
+    "district_name",
+    "District",
+    "DISTRICT",
+]
+STATE_COL_NAMES = [
+    "state",
+    "state_name",
+    "State",
+    "STATE_UT",
+    "state_ut",
+    "STATE/UT",
+    "States/UTs",
+    "States/UT",
+    "STATE/UTS",
+]
 YEAR_COL_NAMES = ["year", "Year", "YEAR"]
 
 # Crime type columns we look for
@@ -27,15 +42,73 @@ CRIME_COLUMNS = {
     "robbery": ["robbery", "Robbery", "ROBBERY", "dacoity", "Dacoity"],
     "theft": ["theft", "Theft", "THEFT"],
     "rape": ["rape", "Rape", "RAPE"],
-    "kidnapping": ["kidnapping", "Kidnapping", "KIDNAPPING", "kidnapping_abduction"],
-    "assault": ["assault", "Assault", "ASSAULT", "assault_on_women"],
+    "kidnapping": [
+        "kidnapping",
+        "Kidnapping",
+        "KIDNAPPING",
+        "kidnapping_abduction",
+        "KIDNAPPING & ABDUCTION",
+        "Kidnapping & Abduction",
+        "Kidnapping and Abduction",
+    ],
+    "assault": [
+        "assault",
+        "Assault",
+        "ASSAULT",
+        "assault_on_women",
+        "ASSAULT ON WOMEN WITH INTENT TO OUTRAGE HER MODESTY",
+        "Assault on women with intent to outrage her modesty",
+        "HURT/GREVIOUS HURT",
+    ],
     "riots": ["riots", "Riots", "RIOTS"],
-    "total_ipc": ["total_ipc_crimes", "Total_IPC_crimes", "TOTAL_IPC_CRIMES", "total"],
+    "total_ipc": [
+        "total_ipc_crimes",
+        "Total_IPC_crimes",
+        "TOTAL_IPC_CRIMES",
+        "TOTAL IPC CRIMES",
+        "Total IPC Crimes",
+        "total ipc crimes",
+        "total",
+    ],
 }
 
 # District centroids (a subset — full version would have all 700+ districts)
 # In production, use the census geospatial index dataset
 DISTRICT_CENTROIDS_PATH = RAW_CRIME.parent / "population" / "district_centroids.csv"
+
+
+def _crime_file_kind(file_path: Path) -> str | None:
+    """
+    Classify raw NCRB files into the small subset we can safely merge.
+
+    We currently keep only district-level IPC totals and district-level
+    crimes-against-women tables. Other NCRB exports (arrests, police staffing,
+    property recovery, etc.) are valid datasets, but they do not map cleanly
+    into the current feature engineering logic and would otherwise distort the
+    district aggregates.
+    """
+    name = file_path.name.lower()
+    if "district_wise_crimes_committed_ipc" in name:
+        return "ipc"
+    if "district_wise_crimes_committed_against_women" in name:
+        return "women"
+    return None
+
+
+def _dedupe_csv_files(csv_files: list[Path]) -> list[Path]:
+    """
+    Keep one copy per filename, preferring the shallowest path.
+
+    Some Kaggle crime dumps contain the same NCRB files nested under repeated
+    `crime/` folders. Processing every duplicate would double-count rows.
+    """
+    chosen: dict[str, Path] = {}
+    for path in csv_files:
+        key = path.name.lower()
+        current = chosen.get(key)
+        if current is None or len(path.parts) < len(current.parts):
+            chosen[key] = path
+    return sorted(chosen.values(), key=lambda p: p.name.lower())
 
 
 def _find_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
@@ -148,41 +221,55 @@ def ingest_crime_dataset(file_path: Path) -> pd.DataFrame | None:
     if df.empty or len(df.columns) < 3:
         return None
 
+    file_kind = _crime_file_kind(file_path)
+    if file_kind is None:
+        return None
+
     # Find key columns
     state_col = _find_column(df, STATE_COL_NAMES)
     district_col = _find_column(df, DISTRICT_COL_NAMES)
     year_col = _find_column(df, YEAR_COL_NAMES)
 
-    if state_col is None:
+    if state_col is None or district_col is None:
         return None
 
     result = pd.DataFrame()
     result["state"] = df[state_col].astype(str).str.strip().str.lower()
-
-    if district_col:
-        result["district"] = df[district_col].astype(str).str.strip().str.lower()
-    else:
-        result["district"] = "unknown"
+    result["district"] = df[district_col].astype(str).str.strip().str.lower()
 
     if year_col:
         result["year"] = _safe_float(df[year_col]).astype(int)
     else:
         result["year"] = 0
 
+    matched_crime_cols = 0
+
     # Extract crime type columns
     for crime_type, col_candidates in CRIME_COLUMNS.items():
         col = _find_column(df, col_candidates)
         if col:
             result[crime_type] = _safe_float(df[col])
+            matched_crime_cols += 1
         else:
             result[crime_type] = 0.0
 
+    if matched_crime_cols == 0:
+        return None
+
     # Filter out aggregation rows
     result = result[
-        ~result["state"].str.contains("total|all india|india", case=False, na=False)
+        ~result["state"].str.contains("total|all india|^india$", case=False, na=False)
+    ].copy()
+    result = result[
+        ~result["district"].str.contains("total|all district|^zz total$|^sstotal$",
+                                         case=False, na=False)
     ].copy()
 
+    if result.empty:
+        return None
+
     result["source_file"] = file_path.name
+    result["source_kind"] = file_kind
 
     return result
 
@@ -206,8 +293,12 @@ def compute_crime_factors(crime_df: pd.DataFrame) -> pd.DataFrame:
     else:
         recent = crime_df.copy()
 
-    # Aggregate by state+district (average across years)
-    grouped = recent.groupby(["state", "district"]).agg({
+    ipc = recent[recent["source_kind"] == "ipc"].copy()
+    if ipc.empty:
+        return pd.DataFrame()
+
+    # Aggregate IPC crimes by state+district (average across years)
+    grouped = ipc.groupby(["state", "district"]).agg({
         "murder": "mean",
         "robbery": "mean",
         "theft": "mean",
@@ -218,22 +309,55 @@ def compute_crime_factors(crime_df: pd.DataFrame) -> pd.DataFrame:
         "total_ipc": "mean",
     }).reset_index()
 
-    # Compute factors
-    total = grouped["total_ipc"].clip(lower=1)
+    grouped = grouped[grouped["total_ipc"] > 0].copy()
+    if grouped.empty:
+        return grouped
 
-    grouped["crime_rate_per_100k"] = total.clip(0, 1500)
+    # We do not have reliable district population in the current crime ingest,
+    # so convert IPC counts into a bounded district crime-intensity proxy.
+    # This preserves relative ordering without saturating nearly every district.
+    p95_total = grouped["total_ipc"].quantile(0.95)
+    total = grouped["total_ipc"].clip(lower=1)
+    grouped["crime_rate_per_100k"] = (
+        total / max(p95_total, 1.0) * 750.0
+    ).clip(0, 750)
 
     # Violent crime ratio
     violent = grouped["murder"] + grouped["robbery"] + grouped["assault"] + grouped["riots"]
     grouped["crime_type_distribution_risk"] = (violent / total).clip(0, 1)
 
-    # Gender safety (inverse of sexual crimes ratio)
-    gender_crimes = grouped["rape"] + grouped["kidnapping"]
-    grouped["gender_safety_index"] = (1.0 - (gender_crimes / total).clip(0, 1)).clip(0.15, 0.98)
-
     # Tourist-targeted crime proxy
     tourist_crimes = grouped["robbery"] + grouped["theft"]
     grouped["tourist_targeted_crime_index"] = (tourist_crimes / total).clip(0, 1)
+
+    # Prefer women-specific district tables for gender safety when present.
+    women = recent[recent["source_kind"] == "women"].copy()
+    if not women.empty:
+        women_grouped = women.groupby(["state", "district"]).agg({
+            "rape": "mean",
+            "kidnapping": "mean",
+            "assault": "mean",
+        }).reset_index()
+        women_grouped["women_risk_total"] = (
+            women_grouped["rape"] +
+            women_grouped["kidnapping"] +
+            women_grouped["assault"]
+        )
+        grouped = grouped.merge(
+            women_grouped[["state", "district", "women_risk_total"]],
+            on=["state", "district"],
+            how="left",
+        )
+        women_risk = grouped["women_risk_total"].fillna(grouped["rape"] + grouped["kidnapping"])
+    else:
+        women_risk = grouped["rape"] + grouped["kidnapping"]
+
+    women_risk = women_risk.fillna(0.0)
+    total = grouped["total_ipc"].clip(lower=1)
+
+    grouped["gender_safety_index"] = (
+        1.0 - (women_risk / total).clip(0, 1)
+    ).clip(0.15, 0.98)
 
     return grouped
 
@@ -243,7 +367,7 @@ def ingest_all_crime() -> pd.DataFrame:
     Main entry point: ingest all crime CSVs, compute factors, 
     attach coordinates, save as grid.
     """
-    csv_files = list(RAW_CRIME.glob("**/*.csv"))
+    csv_files = _dedupe_csv_files(list(RAW_CRIME.glob("**/*.csv")))
     print(f"Found {len(csv_files)} crime CSV files")
 
     all_frames = []

@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from config.settings import RAW_HEALTH, PROCESSED_DIR
+from processing.geo_grid import snap_dataframe
 
 
 HOSPITAL_TYPE_SCORES = {
@@ -33,6 +34,75 @@ HOSPITAL_TYPE_SCORES = {
 }
 
 
+HEALTH_CITY_COORDS = {
+    "agra": (27.1767, 78.0081),
+    "ahmedabad": (23.0225, 72.5714),
+    "amritsar": (31.6340, 74.8723),
+    "bengaluru": (12.9716, 77.5946),
+    "bangalore": (12.9716, 77.5946),
+    "bhopal": (23.2599, 77.4126),
+    "bhubaneswar": (20.2961, 85.8245),
+    "chandigarh": (30.7333, 76.7794),
+    "chennai": (13.0827, 80.2707),
+    "coimbatore": (11.0168, 76.9558),
+    "dehradun": (30.3165, 78.0322),
+    "delhi": (28.6139, 77.2090),
+    "faridabad": (28.4089, 77.3178),
+    "ghaziabad": (28.6692, 77.4538),
+    "guwahati": (26.1445, 91.7362),
+    "gurgaon": (28.4595, 77.0266),
+    "gurugram": (28.4595, 77.0266),
+    "hyderabad": (17.3850, 78.4867),
+    "indore": (22.7196, 75.8577),
+    "jaipur": (26.9124, 75.7873),
+    "kanpur": (26.4499, 80.3319),
+    "kochi": (9.9312, 76.2673),
+    "kolkata": (22.5726, 88.3639),
+    "lucknow": (26.8467, 80.9462),
+    "ludhiana": (30.9010, 75.8573),
+    "mumbai": (19.0760, 72.8777),
+    "mysore": (12.2958, 76.6394),
+    "mysuru": (12.2958, 76.6394),
+    "nagpur": (21.1458, 79.0882),
+    "noida": (28.5355, 77.3910),
+    "patna": (25.6093, 85.1376),
+    "pune": (18.5204, 73.8567),
+    "ranchi": (23.3441, 85.3096),
+    "raipur": (21.2514, 81.6296),
+    "surat": (21.1702, 72.8311),
+    "thiruvananthapuram": (8.5241, 76.9366),
+    "trivandrum": (8.5241, 76.9366),
+    "varanasi": (25.3176, 83.0064),
+    "visakhapatnam": (17.6868, 83.2185),
+    "vijayawada": (16.5062, 80.6480),
+}
+
+
+HEALTH_STATE_COORDS = {
+    "andhra pradesh": HEALTH_CITY_COORDS["visakhapatnam"],
+    "assam": HEALTH_CITY_COORDS["guwahati"],
+    "bihar": HEALTH_CITY_COORDS["patna"],
+    "chandigarh": HEALTH_CITY_COORDS["chandigarh"],
+    "chhattisgarh": HEALTH_CITY_COORDS["raipur"],
+    "delhi": HEALTH_CITY_COORDS["delhi"],
+    "gujarat": HEALTH_CITY_COORDS["ahmedabad"],
+    "haryana": HEALTH_CITY_COORDS["gurugram"],
+    "jharkhand": HEALTH_CITY_COORDS["ranchi"],
+    "karnataka": HEALTH_CITY_COORDS["bengaluru"],
+    "kerala": HEALTH_CITY_COORDS["thiruvananthapuram"],
+    "madhya pradesh": HEALTH_CITY_COORDS["bhopal"],
+    "maharashtra": HEALTH_CITY_COORDS["mumbai"],
+    "odisha": HEALTH_CITY_COORDS["bhubaneswar"],
+    "punjab": HEALTH_CITY_COORDS["amritsar"],
+    "rajasthan": HEALTH_CITY_COORDS["jaipur"],
+    "tamil nadu": HEALTH_CITY_COORDS["chennai"],
+    "telangana": HEALTH_CITY_COORDS["hyderabad"],
+    "uttar pradesh": HEALTH_CITY_COORDS["lucknow"],
+    "uttarakhand": HEALTH_CITY_COORDS["dehradun"],
+    "west bengal": HEALTH_CITY_COORDS["kolkata"],
+}
+
+
 def _find_col(df: pd.DataFrame, candidates: list[str]) -> str | None:
     for c in candidates:
         if c in df.columns:
@@ -42,6 +112,67 @@ def _find_col(df: pd.DataFrame, candidates: list[str]) -> str | None:
         if c.lower().strip() in lower_map:
             return lower_map[c.lower().strip()]
     return None
+
+
+def _lookup_city_coords(text: str) -> tuple[float, float] | None:
+    value = str(text).strip().lower()
+    if value in {"", "nan", "none", "null"}:
+        return None
+    if value in HEALTH_CITY_COORDS:
+        return HEALTH_CITY_COORDS[value]
+    for city, coords in HEALTH_CITY_COORDS.items():
+        if city in value or (len(value) >= 4 and value in city):
+            return coords
+    return None
+
+
+def _assign_spatial_fallbacks(result: pd.DataFrame) -> pd.DataFrame:
+    from ingestion.ingest_crime import _load_district_centroids
+
+    if "latitude" not in result.columns:
+        result["latitude"] = np.nan
+    if "longitude" not in result.columns:
+        result["longitude"] = np.nan
+
+    centroids = _load_district_centroids()
+    if not centroids.empty:
+        centroids = centroids.copy()
+        centroids.columns = [c.strip().lower() for c in centroids.columns]
+        if "state" in centroids.columns:
+            centroids["state"] = centroids["state"].astype(str).str.strip().str.lower()
+        if "district" in centroids.columns:
+            centroids["district"] = centroids["district"].astype(str).str.strip().str.lower()
+
+        if "district" in result.columns and "state" in result.columns and "district" in centroids.columns:
+            missing = result["latitude"].isna() | result["longitude"].isna()
+            merged = result.loc[missing, ["state", "district"]].merge(
+                centroids[["state", "district", "latitude", "longitude"]].drop_duplicates(),
+                on=["state", "district"],
+                how="left",
+            )
+            for idx, row in zip(result.loc[missing].index, merged.itertuples(index=False)):
+                if pd.notna(row.latitude) and pd.notna(row.longitude):
+                    result.at[idx, "latitude"] = row.latitude
+                    result.at[idx, "longitude"] = row.longitude
+
+    if "city" in result.columns:
+        missing = result["latitude"].isna() | result["longitude"].isna()
+        for idx in result[missing].index:
+            coords = _lookup_city_coords(result.at[idx, "city"])
+            if coords is not None:
+                result.at[idx, "latitude"] = coords[0]
+                result.at[idx, "longitude"] = coords[1]
+
+    if "state" in result.columns:
+        missing = result["latitude"].isna() | result["longitude"].isna()
+        for idx in result[missing].index:
+            state = str(result.at[idx, "state"]).strip().lower()
+            coords = HEALTH_STATE_COORDS.get(state)
+            if coords is not None:
+                result.at[idx, "latitude"] = coords[0]
+                result.at[idx, "longitude"] = coords[1]
+
+    return result
 
 
 def _classify_hospital_type(name_or_type: str) -> tuple[str, float]:
@@ -99,6 +230,8 @@ def ingest_hospital_file(file_path: Path) -> pd.DataFrame | None:
         result["district"] = df[district_col].astype(str).str.strip().str.lower()
     if city_col:
         result["city"] = df[city_col].astype(str).str.strip().str.lower()
+
+    result = _assign_spatial_fallbacks(result)
 
     # Hospital name
     name_col = _find_col(df, [
@@ -172,8 +305,7 @@ def compute_health_factors(hospital_df: pd.DataFrame) -> pd.DataFrame:
     if geo.empty:
         return pd.DataFrame()
 
-    geo["grid_lat"] = (geo["latitude"] / 0.1).round() * 0.1
-    geo["grid_lon"] = (geo["longitude"] / 0.1).round() * 0.1
+    geo = snap_dataframe(geo)
 
     grouped = geo.groupby(["grid_lat", "grid_lon"]).agg(
         hospital_count=("hospital_name", "size"),
@@ -229,14 +361,26 @@ def ingest_all_health() -> pd.DataFrame:
         return pd.DataFrame()
 
     combined = pd.concat(all_frames, ignore_index=True)
-    # Deduplicate hospitals by name + approximate location
+    combined["coord_key"] = combined.apply(
+        lambda row: (
+            round(float(row["latitude"]), 2), round(float(row["longitude"]), 2)
+        ) if pd.notna(row.get("latitude")) and pd.notna(row.get("longitude")) else (
+            str(row.get("city", "")),
+            str(row.get("district", "")),
+        ),
+        axis=1,
+    )
+    # Deduplicate hospitals by name plus approximate location, not by state only.
     combined["name_lower"] = combined["hospital_name"].str.lower().str.strip()
     combined = combined.drop_duplicates(
-        subset=["name_lower", "state"],
+        subset=["name_lower", "coord_key"],
         keep="first",
-    ).drop(columns=["name_lower"])
+    ).drop(columns=["name_lower", "coord_key"])
 
     print(f"Combined: {len(combined)} unique facilities")
+
+    coord_pct = float(combined["latitude"].notna().mean() * 100) if "latitude" in combined.columns else 0.0
+    print(f"Coordinate coverage: {coord_pct:.1f}%")
 
     factors = compute_health_factors(combined)
 

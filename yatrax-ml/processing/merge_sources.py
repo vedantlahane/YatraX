@@ -150,6 +150,7 @@ def _merge_source(
     interpolate_radius_km: float = 30.0,
 ) -> pd.DataFrame:
     """Merge a single source into the grid."""
+    original_grid_cols = set(grid.columns)
 
     # Ensure grid columns exist in source
     available_cols = [c for c in columns if c in source_df.columns]
@@ -157,6 +158,7 @@ def _merge_source(
         # Apply defaults
         for col, default in defaults.items():
             grid[col] = default
+        print(f"  Coverage: no usable columns found, applied defaults to 100% of cells")
         return grid
 
     # Check if source has grid coordinates already
@@ -182,11 +184,40 @@ def _merge_source(
             grid[col] = defaults.get(col, np.nan)
 
     # Fill remaining NaN with defaults
+    coverage_report: list[str] = []
     for col, default in defaults.items():
         if col in grid.columns:
+            non_default_mask = grid[col].notna()
+            coverage_pct = float(non_default_mask.mean() * 100)
             grid[col] = grid[col].fillna(default)
+            default_pct = float((grid[col] == default).mean() * 100)
         else:
             grid[col] = default
+            coverage_pct = 0.0
+            default_pct = 100.0
+        is_new_col = col not in original_grid_cols
+        if is_new_col:
+            coverage_report.append(
+                f"{col}: source_coverage={coverage_pct:.2f}% default_pct={default_pct:.2f}%"
+            )
+
+    if coverage_report:
+        print("  Coverage: " + "; ".join(coverage_report))
+
+        weak = [line for line in coverage_report if "source_coverage=0.00%" in line]
+        sparse = []
+        for line in coverage_report:
+            try:
+                pct_text = line.split("source_coverage=")[1].split("%")[0]
+                pct = float(pct_text)
+                if 0.0 < pct < 5.0:
+                    sparse.append(line)
+            except Exception:
+                continue
+        if weak:
+            print("  Warning: some columns have no source coverage and are entirely default-filled")
+        elif sparse:
+            print("  Warning: some columns have very sparse source coverage (<5%)")
 
     return grid
 

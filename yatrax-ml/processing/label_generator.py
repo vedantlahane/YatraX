@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from config.settings import PROCESSED_DIR, TRAINING_DIR, SEASONS, RANDOM_SEED
+from processing.merge_sources import MERGE_CONFIG
 
 
 def _incident_density_score(
@@ -81,6 +82,53 @@ def _weekend_modifier(day_of_week: int, hour: int) -> float:
     return 1.0
 
 
+def _validate_unified_grid_quality(grid: pd.DataFrame) -> None:
+    """
+    Refuse label generation when critical features are mostly defaults.
+    """
+    critical_features = [
+        "crime_rate_per_100k",
+        "road_accident_hotspot_risk",
+        "hospital_level_score",
+        "emergency_availability_score",
+        "nearest_hospital_proxy_km",
+        "aqi",
+        "population_density_per_km2",
+    ]
+
+    default_lookup: dict[str, float] = {}
+    for config in MERGE_CONFIG.values():
+        default_lookup.update(config.get("fill_defaults", {}))
+
+    warnings: list[str] = []
+    failures: list[str] = []
+
+    for feature in critical_features:
+        if feature not in grid.columns or feature not in default_lookup:
+            continue
+        default = default_lookup[feature]
+        default_pct = float((grid[feature] == default).mean() * 100)
+        unique = int(grid[feature].nunique(dropna=True))
+
+        if default_pct >= 90.0:
+            failures.append(f"{feature}: {default_pct:.2f}% default-filled, unique={unique}")
+        elif default_pct >= 75.0:
+            warnings.append(f"{feature}: {default_pct:.2f}% default-filled, unique={unique}")
+
+    if warnings:
+        print("Grid quality warnings:")
+        for item in warnings:
+            print(f"  - {item}")
+
+    if failures:
+        detail = "\n".join(f"  - {item}" for item in failures)
+        raise RuntimeError(
+            "Unified grid quality is too poor for retraining. "
+            "Fix source coverage before generating labels.\n"
+            f"{detail}"
+        )
+
+
 def generate_safety_labels(samples_per_cell: int = 24) -> pd.DataFrame:
     """
     Generate training data by combining real geographic data with
@@ -103,6 +151,7 @@ def generate_safety_labels(samples_per_cell: int = 24) -> pd.DataFrame:
         )
 
     grid = pd.read_parquet(grid_path)
+    _validate_unified_grid_quality(grid)
     print(f"Loaded grid: {len(grid)} cells × {len(grid.columns)} columns")
 
     rng = np.random.default_rng(RANDOM_SEED)

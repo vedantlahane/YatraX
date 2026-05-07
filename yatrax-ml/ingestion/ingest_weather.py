@@ -13,16 +13,29 @@ import numpy as np
 import pandas as pd
 
 from config.settings import RAW_WEATHER, PROCESSED_DIR, SEASONS
+from processing.geo_grid import snap_dataframe
 
 
 # Column name mappings across different weather datasets
-TEMP_COLS = ["temperature_celsius", "temp_c", "temperature", "tavg", "meantemp", "Temp_C"]
-HUMIDITY_COLS = ["humidity", "relative_humidity", "humidity_pct", "Humidity"]
-WIND_COLS = ["wind_speed", "wind_kph", "wind_speed_kmph", "wspd", "Wind_Speed"]
-RAINFALL_COLS = ["precip_mm", "precipitation", "rainfall", "rain_mm", "Rainfall", "Precipitation"]
+TEMP_COLS = [
+    "temperature_celsius", "temp_c", "temperature", "tavg", "meantemp",
+    "Temp_C", "temperature_2m",
+]
+HUMIDITY_COLS = [
+    "humidity", "relative_humidity", "humidity_pct", "Humidity",
+    "relative_humidity_2m",
+]
+WIND_COLS = [
+    "wind_speed", "wind_kph", "wind_speed_kmph", "wspd", "Wind_Speed",
+    "wind_speed_10m",
+]
+RAINFALL_COLS = [
+    "precip_mm", "precipitation", "rainfall", "rain_mm", "Rainfall",
+    "Precipitation", "rain",
+]
 VISIBILITY_COLS = ["visibility_km", "visibility", "vis", "Visibility"]
 UV_COLS = ["uv_index", "uv", "UV_Index"]
-PRESSURE_COLS = ["pressure_mb", "pressure", "sea_level_pressure"]
+PRESSURE_COLS = ["pressure_mb", "pressure", "sea_level_pressure", "pressure_msl"]
 LAT_COLS = ["latitude", "lat", "Latitude"]
 LON_COLS = ["longitude", "lon", "lng", "Longitude"]
 DATE_COLS = ["date", "datetime", "last_updated", "Date", "date_time"]
@@ -49,6 +62,10 @@ def _get_season(month: int) -> str:
         if month in months:
             return season
     return "post_monsoon"
+
+
+def _filename_to_city(file_path: Path) -> str:
+    return file_path.stem.replace("_", " ").strip().lower()
 
 
 def ingest_weather_file(file_path: Path) -> pd.DataFrame | None:
@@ -78,7 +95,10 @@ def ingest_weather_file(file_path: Path) -> pd.DataFrame | None:
         result["latitude"] = np.nan
         result["longitude"] = np.nan
     else:
-        return None
+        # Many local weather files encode the location only in the filename.
+        result["city"] = pd.Series(_filename_to_city(file_path), index=df.index)
+        result["latitude"] = np.nan
+        result["longitude"] = np.nan
 
     # Date and time
     date_col = _find_col(df, DATE_COLS)
@@ -212,6 +232,17 @@ def _geocode_cities(df: pd.DataFrame) -> pd.DataFrame:
         "delhi": (28.6139, 77.2090),
         "new delhi": (28.6139, 77.2090),
         "mumbai": (19.0760, 72.8777),
+        "abbigeri": (15.5863781, 75.7551897),
+        "abhayapuri": (26.3343070, 90.6669044),
+        "abhia": (25.3463810, 87.1448307),
+        "abiramam": (9.4420721, 78.4396376),
+        "ablu": (30.3362133, 74.7884845),
+        "abohar": (30.1450543, 74.1956597),
+        "abu": (24.6186732, 72.7611575),
+        "achhnera": (27.1771454, 77.7575072),
+        "adalaj": (23.1646919, 72.5821046),
+        "adalpur": (22.4133669, 76.9490837),
+        "adampur": (29.2857734, 75.4789052),
         "bangalore": (12.9716, 77.5946),
         "bengaluru": (12.9716, 77.5946),
         "chennai": (13.0827, 80.2707),
@@ -311,6 +342,36 @@ def _geocode_cities(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def compute_weather_factors(weather_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Aggregate raw weather observations into grid-level baseline factors.
+    """
+    if weather_df.empty:
+        return pd.DataFrame()
+
+    geo = weather_df.dropna(subset=["latitude", "longitude"]).copy()
+    if geo.empty:
+        return pd.DataFrame()
+
+    geo = snap_dataframe(geo)
+
+    grouped = geo.groupby(["grid_lat", "grid_lon"]).agg(
+        temperature_c=("temperature_c", "mean"),
+        humidity_pct=("humidity_pct", "mean"),
+        wind_speed_kmph=("wind_speed_kmph", "mean"),
+        rainfall_mmph=("rainfall_mmph", "mean"),
+        visibility_km=("visibility_km", "mean"),
+        uv_index=("uv_index", "mean"),
+        pressure_mb=("pressure_mb", "mean"),
+        weather_severity=("weather_severity", "mean"),
+        sample_count=("weather_severity", "size"),
+    ).reset_index()
+
+    grouped["latitude"] = grouped["grid_lat"]
+    grouped["longitude"] = grouped["grid_lon"]
+    return grouped
+
+
 def ingest_all_weather() -> pd.DataFrame:
     """Main entry point: process all weather CSVs."""
     csv_files = list(RAW_WEATHER.glob("**/*.csv"))
@@ -335,11 +396,16 @@ def ingest_all_weather() -> pd.DataFrame:
 
     print(f"Combined weather data: {len(combined)} rows with coordinates")
 
-    output_path = PROCESSED_DIR / "weather_grid.parquet"
-    combined.to_parquet(output_path, index=False)
-    print(f"Saved: {output_path}")
+    factors = compute_weather_factors(combined)
+    if factors.empty:
+        print("No weather factors could be computed!")
+        return pd.DataFrame()
 
-    return combined
+    output_path = PROCESSED_DIR / "weather_grid.parquet"
+    factors.to_parquet(output_path, index=False)
+    print(f"Saved: {output_path} ({len(factors)} grid cells)")
+
+    return factors
 
 
 if __name__ == "__main__":
