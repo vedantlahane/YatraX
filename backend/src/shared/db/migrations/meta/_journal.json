@@ -8,6 +8,13 @@
       "when": 1777916397418,
       "tag": "0000_overconfident_proteus",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778172478240,
+      "tag": "0001_solid_goliath",
+      "breakpoints": true
     }
   ]
 }
