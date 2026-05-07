@@ -1,0 +1,67 @@
+{
+  "model_type": "parametric_distance_decay",
+  "created_at": "2026-04-26T16:07:46.132909+00:00",
+  "profiles": {
+    "flood": {
+      "spread_km": 15.0,
+      "decay_hours": 48.0,
+      "intensity": 0.8
+    },
+    "landslide": {
+      "spread_km": 3.0,
+      "decay_hours": 72.0,
+      "intensity": 0.7
+    },
+    "earthquake": {
+      "spread_km": 50.0,
+      "decay_hours": 24.0,
+      "intensity": 0.9
+    },
+    "cyclone_storm": {
+      "spread_km": 80.0,
+      "decay_hours": 36.0,
+      "intensity": 0.85
+    },
+    "wildlife": {
+      "spread_km": 5.0,
+      "decay_hours": 12.0,
+      "intensity": 0.5
+    },
+    "crime_robbery": {
+      "spread_km": 2.0,
+      "decay_hours": 6.0,
+      "intensity": 0.4
+    },
+    "crime_assault": {
+      "spread_km": 1.5,
+      "decay_hours": 6.0,
+      "intensity": 0.4
+    },
+    "road_accident": {
+      "spread_km": 1.0,
+      "decay_hours": 4.0,
+      "intensity": 0.3
+    },
+    "fire": {
+      "spread_km": 10.0,
+      "decay_hours": 24.0,
+      "intensity": 0.7
+    },
+    "medical_emergency": {
+      "spread_km": 0.5,
+      "decay_hours": 2.0,
+      "intensity": 0.1
+    },
+    "stranded": {
+      "spread_km": 0.5,
+      "decay_hours": 2.0,
+      "intensity": 0.1
+    },
+    "unknown": {
+      "spread_km": 5.0,
+      "decay_hours": 12.0,
+      "intensity": 0.5
+    }
+  },
+  "formula": "risk = severity \u00d7 intensity \u00d7 exp(-distance/spread) \u00d7 exp(-time/decay)"
+}

@@ -1,0 +1,21 @@
+{
+  "trained_at": "2026-04-26T16:07:45.754385+00:00",
+  "n_samples": 60000,
+  "n_features": 11,
+  "feature_columns": [
+    "current_score",
+    "score_mean_6h",
+    "score_std_6h",
+    "score_slope_6h",
+    "weather_mean_6h",
+    "weather_slope_6h",
+    "rain_max_6h",
+    "rain_mean_6h",
+    "current_hour",
+    "is_night",
+    "forecast_horizon_h"
+  ],
+  "mae": 4.400333668480551,
+  "within_5": 0.6623333333333333,
+  "within_10": 0.9103333333333333
+}

@@ -1,0 +1,44 @@
+{
+  "safety_scorer": {
+    "mae": 2.603011236151431,
+    "rmse": 3.6322942654244548,
+    "r2": 0.9730762621541963,
+    "within_5_pct": 0.8304722222222222,
+    "within_10_pct": 0.9876833333333334
+  },
+  "trajectory": {
+    "mae": 4.400333668480551,
+    "within_5": 0.6623333333333333,
+    "within_10": 0.9103333333333333
+  },
+  "anomaly_detector": {
+    "min": -0.8212818435276616,
+    "max": -0.32592260343016816,
+    "mean": -0.37862636817771744,
+    "std": 0.10112707447441907,
+    "threshold_approx": -0.5793826968925146
+  },
+  "incident_classifier": {
+    "accuracy": 0.9547442649290369,
+    "per_class_f1": {
+      "crime_assault": 0.5148514851485149,
+      "crime_robbery": 0.5076142131979695,
+      "cyclone_storm": 1.0,
+      "earthquake": 0.0,
+      "fire": 1.0,
+      "flood": 1.0,
+      "landslide": 1.0,
+      "medical_emergency": 0.6383442265795207,
+      "road_accident": 0.9963484611371936,
+      "stranded": 0.8212058212058212,
+      "unknown": 0.0,
+      "wildlife": 0.05660377358490566
+    }
+  },
+  "spatial_risk": {
+    "profiles": 12
+  },
+  "alert_timing": {
+    "model_type": "heuristic_with_experience_logging"
+  }
+}

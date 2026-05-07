@@ -1,0 +1,37 @@
+{
+  "trained_at": "2026-04-26T16:05:36.052606+00:00",
+  "n_features": 20,
+  "feature_names": [
+    "crime_rate_per_100k",
+    "road_accident_hotspot_risk",
+    "accident_severity_index",
+    "flood_risk",
+    "earthquake_risk",
+    "landslide_risk",
+    "fire_risk_index",
+    "aqi",
+    "weather_severity",
+    "temperature_c",
+    "rainfall_mmph",
+    "wind_speed_kmph",
+    "visibility_km",
+    "hospital_level_score",
+    "emergency_availability_score",
+    "nearest_hospital_proxy_km",
+    "water_safety_score",
+    "water_contamination_risk",
+    "population_density_per_km2",
+    "noise_level_proxy"
+  ],
+  "n_training_cells": 93611,
+  "contamination": 0.08,
+  "n_anomalies_found": 5047,
+  "anomaly_pct": 5.39,
+  "score_stats": {
+    "min": -0.8212818435276616,
+    "max": -0.32592260343016816,
+    "mean": -0.37862636817771744,
+    "std": 0.10112707447441907,
+    "threshold_approx": -0.5793826968925146
+  }
+}

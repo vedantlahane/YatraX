@@ -1,0 +1,186 @@
+{
+  "model_version": "4.0.0-lgbm",
+  "trained_at": "2026-04-26T16:05:17.579116+00:00",
+  "feature_columns": [
+    "hour",
+    "month",
+    "day_of_week",
+    "crime_type_distribution_risk",
+    "gender_safety_index",
+    "tourist_targeted_crime_index",
+    "temperature_c",
+    "humidity_pct",
+    "wind_speed_kmph",
+    "rainfall_mmph",
+    "visibility_km",
+    "uv_index",
+    "weather_severity",
+    "aqi",
+    "pm25",
+    "pm10",
+    "water_safety_score",
+    "water_contamination_risk",
+    "road_accident_hotspot_risk",
+    "accident_severity_index",
+    "fatality_rate",
+    "flood_risk",
+    "earthquake_risk",
+    "cyclone_risk",
+    "landslide_risk",
+    "total_events",
+    "hospital_level_score",
+    "fire_risk_index",
+    "fire_intensity_score",
+    "population_density_per_km2",
+    "noise_level_proxy",
+    "crime_rate_per_100k",
+    "nearest_hospital_proxy_km",
+    "emergency_availability_score",
+    "ambulance_response_score"
+  ],
+  "n_features": 35,
+  "n_train_samples": 840480,
+  "n_val_samples": 179520,
+  "n_test_samples": 180000,
+  "metrics": {
+    "mae": 2.603011236151431,
+    "rmse": 3.6322942654244548,
+    "r2": 0.9730762621541963,
+    "within_5_pct": 0.8304722222222222,
+    "within_10_pct": 0.9876833333333334
+  },
+  "params": {
+    "n_estimators": 800,
+    "max_depth": 10,
+    "learning_rate": 0.03,
+    "num_leaves": 63,
+    "min_child_samples": 30,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "reg_alpha": 0.1,
+    "reg_lambda": 1.0,
+    "random_state": 42
+  },
+  "feature_importance": [
+    {
+      "feature": "hour",
+      "importance": 2461887676.0196915
+    },
+    {
+      "feature": "emergency_availability_score",
+      "importance": 1411890959.9517632
+    },
+    {
+      "feature": "nearest_hospital_proxy_km",
+      "importance": 1369465109.2779598
+    },
+    {
+      "feature": "crime_rate_per_100k",
+      "importance": 863774352.4929066
+    },
+    {
+      "feature": "flood_risk",
+      "importance": 281395411.8579407
+    },
+    {
+      "feature": "month",
+      "importance": 117374259.15775299
+    },
+    {
+      "feature": "earthquake_risk",
+      "importance": 76453756.78384018
+    },
+    {
+      "feature": "road_accident_hotspot_risk",
+      "importance": 61269246.98142815
+    },
+    {
+      "feature": "accident_severity_index",
+      "importance": 49347656.309043884
+    },
+    {
+      "feature": "day_of_week",
+      "importance": 32747642.929746628
+    },
+    {
+      "feature": "cyclone_risk",
+      "importance": 22285944.174484253
+    },
+    {
+      "feature": "total_events",
+      "importance": 19381505.766952515
+    },
+    {
+      "feature": "water_safety_score",
+      "importance": 3811834.232143402
+    },
+    {
+      "feature": "fire_risk_index",
+      "importance": 2675953.7007484436
+    },
+    {
+      "feature": "water_contamination_risk",
+      "importance": 1194465.9993553162
+    },
+    {
+      "feature": "fatality_rate",
+      "importance": 932439.6206512451
+    },
+    {
+      "feature": "landslide_risk",
+      "importance": 329555.794921875
+    },
+    {
+      "feature": "ambulance_response_score",
+      "importance": 94904.41298294067
+    },
+    {
+      "feature": "fire_intensity_score",
+      "importance": 56035.22659301758
+    },
+    {
+      "feature": "crime_type_distribution_risk",
+      "importance": 50524.834548950195
+    },
+    {
+      "feature": "rainfall_mmph",
+      "importance": 21562.23345184326
+    },
+    {
+      "feature": "hospital_level_score",
+      "importance": 8033.46337890625
+    },
+    {
+      "feature": "weather_severity",
+      "importance": 3924.9714889526367
+    },
+    {
+      "feature": "gender_safety_index",
+      "importance": 1387.219009399414
+    },
+    {
+      "feature": "pm10",
+      "importance": 0.0
+    },
+    {
+      "feature": "wind_speed_kmph",
+      "importance": 0.0
+    },
+    {
+      "feature": "visibility_km",
+      "importance": 0.0
+    },
+    {
+      "feature": "tourist_targeted_crime_index",
+      "importance": 0.0
+    },
+    {
+      "feature": "uv_index",
+      "importance": 0.0
+    },
+    {
+      "feature": "aqi",
+      "importance": 0.0
+    }
+  ]
+}

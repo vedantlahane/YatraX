@@ -1,0 +1,35 @@
+{
+  "trained_at": "2026-04-26T16:05:30.731220+00:00",
+  "n_classes": 12,
+  "classes": [
+    "crime_assault",
+    "crime_robbery",
+    "cyclone_storm",
+    "earthquake",
+    "fire",
+    "flood",
+    "landslide",
+    "medical_emergency",
+    "road_accident",
+    "stranded",
+    "unknown",
+    "wildlife"
+  ],
+  "n_features": 34,
+  "n_samples": 56013,
+  "accuracy": 0.9547442649290369,
+  "per_class_f1": {
+    "crime_assault": 0.5148514851485149,
+    "crime_robbery": 0.5076142131979695,
+    "cyclone_storm": 1.0,
+    "earthquake": 0.0,
+    "fire": 1.0,
+    "flood": 1.0,
+    "landslide": 1.0,
+    "medical_emergency": 0.6383442265795207,
+    "road_accident": 0.9963484611371936,
+    "stranded": 0.8212058212058212,
+    "unknown": 0.0,
+    "wildlife": 0.05660377358490566
+  }
+}
