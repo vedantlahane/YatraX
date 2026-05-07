@@ -128,7 +128,10 @@ def get_grid_features(lat: float, lon: float) -> dict[str, float]:
                 if col not in (col_lat, col_lon):
                     val = row[col]
                     if pd.notna(val):
-                        result[col] = float(val)
+                        try:
+                            result[col] = float(val)
+                        except (ValueError, TypeError):
+                            pass
             return result
 
     return dict(_DEFAULTS)
