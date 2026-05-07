@@ -145,6 +145,7 @@ def _load_processed(filename: str) -> pd.DataFrame | None:
 def _merge_source(
     grid: pd.DataFrame,
     source_df: pd.DataFrame,
+    source_name: str,
     columns: list[str],
     defaults: dict[str, float],
     interpolate_radius_km: float = 30.0,
@@ -152,14 +153,17 @@ def _merge_source(
     """Merge a single source into the grid."""
     original_grid_cols = set(grid.columns)
 
+    avail_col = f"{source_name}_data_available"
+    grid[avail_col] = 0
+
+    if len(source_df) < 10:
+        raise ValueError(f"Source {source_name} has too few rows ({len(source_df)}). Failing merge.")
+
     # Ensure grid columns exist in source
     available_cols = [c for c in columns if c in source_df.columns]
     if not available_cols:
-        # Apply defaults
-        for col, default in defaults.items():
-            grid[col] = default
-        print(f"  Coverage: no usable columns found, applied defaults to 100% of cells")
-        return grid
+        raise ValueError(f"Source {source_name} is missing all key columns: {columns}. Failing merge.")
+
 
     # Check if source has grid coordinates already
     if "grid_lat" in source_df.columns and "grid_lon" in source_df.columns:
@@ -170,6 +174,9 @@ def _merge_source(
             on=["grid_lat", "grid_lon"],
             how="left",
         )
+        if available_cols:
+            hit_mask = grid[available_cols[0]].notna()
+            grid.loc[hit_mask, avail_col] = 1
     elif "latitude" in source_df.columns and "longitude" in source_df.columns:
         # Spatial interpolation
         grid = spatial_interpolate(
@@ -178,6 +185,9 @@ def _merge_source(
             value_columns=available_cols,
             radius_km=interpolate_radius_km,
         )
+        if available_cols:
+            hit_mask = grid[available_cols[0]].notna()
+            grid.loc[hit_mask, avail_col] = 1
     else:
         # No spatial info — apply defaults
         for col in available_cols:
@@ -185,10 +195,12 @@ def _merge_source(
 
     # Fill remaining NaN with defaults
     coverage_report: list[str] = []
+    overall_coverage = 0.0
     for col, default in defaults.items():
         if col in grid.columns:
             non_default_mask = grid[col].notna()
             coverage_pct = float(non_default_mask.mean() * 100)
+            overall_coverage = max(overall_coverage, coverage_pct)
             grid[col] = grid[col].fillna(default)
             default_pct = float((grid[col] == default).mean() * 100)
         else:
@@ -204,20 +216,20 @@ def _merge_source(
     if coverage_report:
         print("  Coverage: " + "; ".join(coverage_report))
 
-        weak = [line for line in coverage_report if "source_coverage=0.00%" in line]
-        sparse = []
-        for line in coverage_report:
-            try:
-                pct_text = line.split("source_coverage=")[1].split("%")[0]
-                pct = float(pct_text)
-                if 0.0 < pct < 5.0:
-                    sparse.append(line)
-            except Exception:
-                continue
-        if weak:
-            print("  Warning: some columns have no source coverage and are entirely default-filled")
-        elif sparse:
-            print("  Warning: some columns have very sparse source coverage (<5%)")
+        if overall_coverage < 5.0:
+            raise ValueError(f"Source {source_name} coverage is too sparse ({overall_coverage:.2f}%). Failing merge.")
+        
+        for col in available_cols:
+            if col in grid.columns:
+                unique_vals = grid[col].nunique()
+                if unique_vals < 5 and col not in ["total_events"]:
+                    raise ValueError(f"Feature {col} from {source_name} has too few unique values ({unique_vals}).")
+
+                default_val = defaults.get(col)
+                if default_val is not None:
+                    default_pct = float((grid[col] == default_val).mean() * 100)
+                    if default_pct > 95.0:
+                        raise ValueError(f"Feature {col} from {source_name} is mostly default-filled ({default_pct:.2f}%).")
 
     return grid
 
@@ -232,17 +244,20 @@ def merge_all_sources() -> pd.DataFrame:
 
     for filename, config in MERGE_CONFIG.items():
         print(f"\nMerging: {filename}")
+        source_name = filename.split('_')[0]
         source = _load_processed(filename)
 
         if source is not None:
             grid = _merge_source(
                 grid=grid,
                 source_df=source,
+                source_name=source_name,
                 columns=config["columns"],
                 defaults=config["fill_defaults"],
             )
         else:
             # Apply all defaults
+            grid[f"{source_name}_data_available"] = 0
             for col, default in config["fill_defaults"].items():
                 grid[col] = default
 

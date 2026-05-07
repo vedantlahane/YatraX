@@ -101,10 +101,12 @@ def ingest_accident_file(file_path: Path) -> pd.DataFrame | None:
     if lat_col and lon_col:
         result["latitude"] = pd.to_numeric(df[lat_col], errors="coerce")
         result["longitude"] = pd.to_numeric(df[lon_col], errors="coerce")
+        result["coverage_type"] = "exact"
     elif city_col:
         # Geocode from city names
         result["latitude"] = np.nan
         result["longitude"] = np.nan
+        result["coverage_type"] = "city"
         cities = df[city_col].astype(str).str.strip().str.lower()
         for idx in result.index:
             city = cities.iloc[idx] if idx < len(cities) else ""
@@ -116,9 +118,11 @@ def ingest_accident_file(file_path: Path) -> pd.DataFrame | None:
     else:
         result["latitude"] = np.nan
         result["longitude"] = np.nan
+        result["coverage_type"] = "none"
 
     if state_col:
         result["state"] = df[state_col].astype(str).str.strip().str.lower()
+        result.loc[result["coverage_type"] == "none", "coverage_type"] = "state"
     else:
         result["state"] = "unknown"
 
@@ -268,6 +272,7 @@ def compute_accident_factors(accident_df: pd.DataFrame) -> pd.DataFrame:
         total_injured=("persons_injured", "sum"),
         avg_severity=("severity_score", "mean"),
         event_count=("accident_count", "size"),
+        coverage_type=("coverage_type", "first"),
     ).reset_index()
 
     # Normalize to risk indices
@@ -342,8 +347,16 @@ def ingest_all_accidents() -> pd.DataFrame:
 
     combined = pd.concat(all_frames, ignore_index=True)
     print(f"Combined: {len(combined)} accident records")
+    
+    if "coverage_type" in combined.columns:
+        cov_counts = combined["coverage_type"].value_counts().to_dict()
+        print(f"Coverage breakdown: {cov_counts}")
 
     factors = compute_accident_factors(combined)
+    
+    if factors.empty:
+        print("No spatial accident factors could be computed!")
+        return pd.DataFrame()
 
     output_path = PROCESSED_DIR / "accident_grid.parquet"
     factors.to_parquet(output_path, index=False)

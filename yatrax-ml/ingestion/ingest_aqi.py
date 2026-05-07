@@ -90,24 +90,6 @@ AQI_CODE_PREFIX_COORDS = {
     "wb": AQI_CITY_COORDS["kolkata"],
 }
 
-AQI_STATE_COORDS = {
-    "andhra pradesh": AQI_CITY_COORDS["visakhapatnam"],
-    "bihar": AQI_CITY_COORDS["patna"],
-    "chandigarh": AQI_CITY_COORDS["chandigarh"],
-    "delhi": AQI_CITY_COORDS["delhi"],
-    "gujarat": AQI_CITY_COORDS["ahmedabad"],
-    "haryana": AQI_CITY_COORDS["gurugram"],
-    "karnataka": AQI_CITY_COORDS["bengaluru"],
-    "kerala": AQI_CITY_COORDS["thiruvananthapuram"],
-    "maharashtra": AQI_CITY_COORDS["mumbai"],
-    "punjab": AQI_CITY_COORDS["amritsar"],
-    "rajasthan": AQI_CITY_COORDS["jaipur"],
-    "tamil nadu": AQI_CITY_COORDS["chennai"],
-    "telangana": AQI_CITY_COORDS["hyderabad"],
-    "uttar pradesh": AQI_CITY_COORDS["lucknow"],
-    "west bengal": AQI_CITY_COORDS["kolkata"],
-}
-
 
 def _find_col(df: pd.DataFrame, candidates: list[str]) -> str | None:
     for c in candidates:
@@ -153,14 +135,7 @@ def _assign_spatial_fallbacks(result: pd.DataFrame) -> pd.DataFrame:
                 result.at[idx, "latitude"] = coords[0]
                 result.at[idx, "longitude"] = coords[1]
 
-    if "state" in result.columns:
-        missing = result["latitude"].isna() | result["longitude"].isna()
-        for idx in result[missing].index:
-            state = str(result.at[idx, "state"]).strip().lower()
-            coords = AQI_STATE_COORDS.get(state)
-            if coords is not None:
-                result.at[idx, "latitude"] = coords[0]
-                result.at[idx, "longitude"] = coords[1]
+
 
     return result
 
@@ -326,6 +301,17 @@ def ingest_all_aqi() -> pd.DataFrame:
 
     coord_pct = float(combined["latitude"].notna().mean() * 100) if "latitude" in combined.columns else 0.0
     print(f"Coordinate coverage: {coord_pct:.1f}%")
+
+    if "city" in combined.columns:
+        unique_cities = combined["city"].nunique()
+        print(f"Unique cities/stations: {unique_cities}")
+    else:
+        print("Unique cities/stations: 0")
+        
+    print(f"AQI value range: {combined['aqi'].min():.1f} - {combined['aqi'].max():.1f}")
+    
+    if coord_pct < 50.0:
+        raise ValueError(f"Coordinate coverage too low ({coord_pct:.1f}%), failing AQI ingestion.")
 
     factors = compute_aqi_factors(combined)
     if factors.empty:

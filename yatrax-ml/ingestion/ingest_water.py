@@ -106,12 +106,15 @@ def ingest_water_file(file_path: Path) -> pd.DataFrame | None:
     if lat_col and lon_col:
         result["latitude"] = pd.to_numeric(df[lat_col], errors="coerce")
         result["longitude"] = pd.to_numeric(df[lon_col], errors="coerce")
+        result["coverage_type"] = "exact"
     else:
         result["latitude"] = np.nan
         result["longitude"] = np.nan
+        result["coverage_type"] = "none"
 
     if state_col:
         result["state"] = df[state_col].astype(str).str.strip().str.lower()
+        result.loc[result["coverage_type"] == "none", "coverage_type"] = "state"
     if station_col:
         result["station"] = df[station_col].astype(str).str.strip()
 
@@ -201,9 +204,6 @@ def compute_water_factors(water_df: pd.DataFrame) -> pd.DataFrame:
     geo = water_df.dropna(subset=["latitude", "longitude"]).copy()
 
     if geo.empty:
-        # Try state-level aggregation
-        if "state" in water_df.columns:
-            return _aggregate_water_by_state(water_df)
         return pd.DataFrame()
 
     geo["grid_lat"] = (geo["latitude"] / 0.1).round() * 0.1
@@ -213,6 +213,7 @@ def compute_water_factors(water_df: pd.DataFrame) -> pd.DataFrame:
         water_safety_score=("water_safety_score", "mean"),
         water_contamination_risk=("water_contamination_risk", "mean"),
         sample_count=("water_safety_score", "size"),
+        coverage_type=("coverage_type", "first"),
     ).reset_index()
 
     grouped["drinking_water_safe"] = (grouped["water_safety_score"] > 60).astype(float)
@@ -224,19 +225,8 @@ def compute_water_factors(water_df: pd.DataFrame) -> pd.DataFrame:
 
 def _aggregate_water_by_state(water_df: pd.DataFrame) -> pd.DataFrame:
     """Fallback: aggregate at state level."""
-    from ingestion.ingest_crime import _load_district_centroids
-
-    state_grouped = water_df.groupby("state").agg(
-        water_safety_score=("water_safety_score", "mean"),
-        water_contamination_risk=("water_contamination_risk", "mean"),
-    ).reset_index()
-
-    centroids = _load_district_centroids()
-    merged = state_grouped.merge(centroids, on="state", how="left")
-    merged = merged.dropna(subset=["latitude", "longitude"])
-    merged["drinking_water_safe"] = (merged["water_safety_score"] > 60).astype(float)
-
-    return merged
+    # Deprecated: Do not spread state-level averages as if they were local measurements
+    return pd.DataFrame()
 
 
 def ingest_all_water() -> pd.DataFrame:
@@ -258,7 +248,17 @@ def ingest_all_water() -> pd.DataFrame:
     combined = pd.concat(all_frames, ignore_index=True)
     print(f"Combined: {len(combined)} water quality records")
 
+    if "coverage_type" in combined.columns:
+        print(f"Coverage breakdown: {combined['coverage_type'].value_counts().to_dict()}")
+
+    if "station" in combined.columns:
+        print(f"Unique stations: {combined['station'].nunique()}")
+
     factors = compute_water_factors(combined)
+    
+    if factors.empty:
+        print("No spatial water factors could be computed!")
+        return pd.DataFrame()
 
     output_path = PROCESSED_DIR / "water_quality_grid.parquet"
     factors.to_parquet(output_path, index=False)

@@ -138,30 +138,7 @@ def ingest_noise_file(file_path: Path) -> pd.DataFrame | None:
                         if matched:
                             break
 
-    # State-level fallback geocoding for unmatched stations
-    STATE_COORDS = {
-        "delhi": (28.6139, 77.2090), "maharashtra": (19.08, 72.88),
-        "west bengal": (22.57, 88.36), "tamil nadu": (13.08, 80.27),
-        "karnataka": (12.97, 77.59), "telangana": (17.39, 78.49),
-        "gujarat": (23.02, 72.57), "uttar pradesh": (26.85, 80.95),
-        "rajasthan": (26.91, 75.79), "madhya pradesh": (23.26, 77.41),
-        "punjab": (31.15, 75.34), "haryana": (29.06, 76.08),
-        "bihar": (25.61, 85.14), "kerala": (10.85, 76.27),
-        "andhra pradesh": (15.91, 79.74), "odisha": (20.30, 85.82),
-        "assam": (26.14, 91.74), "jharkhand": (23.34, 85.31),
-        "chhattisgarh": (21.25, 81.63), "uttarakhand": (30.32, 78.03),
-        "goa": (15.49, 73.83), "chandigarh": (30.73, 76.78),
-    }
-    if city_col:
-        # Try state-level fallback for any still-unmatched rows
-        for idx in result.index:
-            if pd.isna(result.at[idx, "latitude"]):
-                station = str(result.at[idx, "city"]).lower().strip()
-                for state_key, (lat, lon) in STATE_COORDS.items():
-                    if state_key in station:
-                        result.at[idx, "latitude"] = lat + np.random.uniform(-0.3, 0.3)
-                        result.at[idx, "longitude"] = lon + np.random.uniform(-0.3, 0.3)
-                        break
+    # State-level fallbacks removed to prevent faking sparse coverage
 
     if state_col and state_col != city_col:
         result["state"] = df[state_col].astype(str).str.strip().str.lower()
@@ -316,6 +293,14 @@ def ingest_all_noise() -> pd.DataFrame:
 
     combined = pd.concat(all_frames, ignore_index=True)
     print(f"Combined: {len(combined)} noise records")
+    
+    if "latitude" in combined.columns:
+        coord_pct = combined["latitude"].notna().mean() * 100
+        print(f"Coordinate coverage: {coord_pct:.1f}%")
+        matched = combined["latitude"].notna().sum()
+        print(f"Stations matched: {matched}")
+        if coord_pct < 50.0:
+            raise ValueError(f"Coordinate coverage too low ({coord_pct:.1f}%), failing noise ingestion.")
 
     factors = compute_noise_factors(combined)
 

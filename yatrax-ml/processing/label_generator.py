@@ -152,209 +152,53 @@ def generate_safety_labels(samples_per_cell: int = 24) -> pd.DataFrame:
 
     grid = pd.read_parquet(grid_path)
     _validate_unified_grid_quality(grid)
-    print(f"Loaded grid: {len(grid)} cells × {len(grid.columns)} columns")
-
+    
     rng = np.random.default_rng(RANDOM_SEED)
+    expanded_rows = []
 
-    # ─── COMPUTE BASE DANGER SCORE PER CELL ───
-    # This uses REAL data: actual crime rates, accident counts,
-    # disaster history, health infrastructure gaps
+    for _, row in grid.iterrows():
+        # Baseline incident proxy: assumes crime and disaster history reflect real risk.
+        # We will drop these exact columns from training so it's not circular, 
+        # or use them as target proxies.
+        crime_risk = _incident_density_score(row.get("crime_rate_per_100k", 0), 1000)
+        disaster_risk = _incident_density_score(row.get("total_events", 0), 50)
+        accident_risk = _incident_density_score(row.get("road_accident_hotspot_risk", 0)*100, 100)
+        
+        # Combine true outcomes
+        base_target_danger = np.clip(0.4 * crime_risk + 0.3 * disaster_risk + 0.3 * accident_risk, 0.0, 1.0)
+        base_safety = 100.0 * (1.0 - base_target_danger)
 
-    # Normalize each risk factor to 0-1
-    risk_components: dict[str, tuple[str, float]] = {
-        # (column_name, weight_in_composite)
-        "crime_rate_per_100k": ("crime_danger", 0.25),
-        "road_accident_hotspot_risk": ("accident_danger", 0.12),
-        "flood_risk": ("flood_danger", 0.10),
-        "earthquake_risk": ("earthquake_danger", 0.08),
-        "landslide_risk": ("landslide_danger", 0.06),
-        "fire_risk_index": ("fire_danger", 0.04),
-        "water_contamination_risk": ("water_danger", 0.03),
-    }
-
-    # Protective factors (higher = safer)
-    protective_components: dict[str, tuple[str, float]] = {
-        "hospital_level_score": ("hospital_protection", 0.10),
-        "emergency_availability_score": ("emergency_protection", 0.07),
-        "water_safety_score": ("water_protection", 0.03),
-    }
-
-    # Environmental factors
-    env_components: dict[str, tuple[str, float]] = {
-        "aqi": ("aqi_danger", 0.04),
-        "weather_severity": ("weather_danger", 0.05),
-    }
-
-    # Infrastructure isolation penalty — directly tied to hospital distance
-    isolation_components: dict[str, tuple[str, float]] = {
-        "nearest_hospital_proxy_km": ("isolation_danger", 0.08),
-        "population_density_per_km2": ("density_protection", -0.05),
-    }
-
-    # Compute base danger per cell (0 to 1)
-    grid["base_danger"] = 0.0
-
-    for col, (name, weight) in risk_components.items():
-        if col in grid.columns:
-            # Normalize to 0-1
-            vals = grid[col].fillna(0)
-            if col == "crime_rate_per_100k":
-                normalized = (vals / 600.0).clip(0, 1)  # 600 per 100k = very high
-            else:
-                p95 = vals.quantile(0.95)
-                normalized = (vals / max(p95, 1e-6)).clip(0, 1)
-
-            grid["base_danger"] += normalized * weight
-
-    for col, (name, weight) in protective_components.items():
-        if col in grid.columns:
-            # Higher protective score = less danger
-            # Use fillna(0): cells without real hospital/emergency data get NO protection
-            vals = grid[col].fillna(0) / 100.0  # normalize to 0-1
-            grid["base_danger"] -= vals.clip(0, 1) * weight
-
-    for col, (name, weight) in env_components.items():
-        if col in grid.columns:
-            vals = grid[col].fillna(0)
-            if col == "aqi":
-                normalized = (vals / 300.0).clip(0, 1)
-            elif col == "weather_severity":
-                normalized = (vals / 100.0).clip(0, 1)
-            else:
-                p95 = vals.quantile(0.95)
-                normalized = (vals / max(p95, 1e-6)).clip(0, 1)
-            grid["base_danger"] += normalized * weight
-
-    # Infrastructure isolation penalty
-    for col, (name, weight) in isolation_components.items():
-        if col in grid.columns:
-            vals = grid[col].fillna(0)
-            if col == "nearest_hospital_proxy_km":
-                # Farther from hospital = more danger; 50km+ is max penalty
-                normalized = (vals / 50.0).clip(0, 1)
-                grid["base_danger"] += normalized * weight
-            elif col == "population_density_per_km2":
-                # Higher density = slightly safer (more people, services nearby)
-                normalized = (vals / 5000.0).clip(0, 1)
-                grid["base_danger"] -= normalized * abs(weight)  # subtract: higher density reduces danger
-
-    grid["base_danger"] = grid["base_danger"].clip(0, 1)
-
-    # ─── EXPAND TO TEMPORAL VARIANTS ───
-    print(f"Generating {samples_per_cell} temporal variants per cell...")
-
-    hours = list(range(24))
-    months = list(range(1, 13))
-    days = list(range(7))
-
-    rows: list[dict[str, Any]] = []
-
-    # Sample cells (use all if manageable, otherwise subsample)
-    max_cells = 50000
-    if len(grid) > max_cells:
-        sampled_grid = grid.sample(max_cells, random_state=RANDOM_SEED)
-    else:
-        sampled_grid = grid
-
-    for _, cell in sampled_grid.iterrows():
         for _ in range(samples_per_cell):
-            hour = int(rng.choice(hours))
-            month = int(rng.choice(months))
-            day_of_week = int(rng.choice(days))
+            hour = rng.integers(0, 24)
+            month = rng.integers(1, 13)
+            day_of_week = rng.integers(0, 7)
 
-            # ── Perturb sparse features to create training variance ──
-            # Crime: wide range so model sees 5 to 750+ (edge case tests 600)
-            orig_crime = cell.get("crime_rate_per_100k", 50)
-            perturbed_crime = float(orig_crime * rng.uniform(0.1, 15.0))
+            time_mod = _time_of_day_modifier(hour)
+            season_mod = _season_modifier(month)
+            weekend_mod = _weekend_modifier(day_of_week, hour)
 
-            # Hospital distance: wide range 3km to 90km (edge case tests 40)
-            orig_hospital_km = cell.get("nearest_hospital_proxy_km", 35)
-            perturbed_hospital_km = float(orig_hospital_km * rng.uniform(0.1, 2.5))
+            # Apply temporal shifts to the actual safety target
+            # (higher mod = more dangerous = lower safety)
+            combined_mod = time_mod * season_mod * weekend_mod
+            
+            # The actual label is derived from base historical safety modified by temporal factors
+            temporal_danger = base_target_danger * combined_mod
+            safety_score_target = np.clip(100.0 * (1.0 - temporal_danger), 0.0, 100.0)
 
-            # Emergency score: wide range (edge case tests 10 and 30)
-            orig_emergency = cell.get("emergency_availability_score", 20)
-            perturbed_emergency = float(np.clip(orig_emergency * rng.uniform(0.1, 5.0), 0, 100))
-
-            # Ambulance score: wide range (edge case tests 5)
-            orig_ambulance = cell.get("ambulance_response_score", 15)
-            perturbed_ambulance = float(np.clip(orig_ambulance * rng.uniform(0.1, 5.0), 0, 100))
-
-            # ── Compute base danger with perturbed values ──
-            danger = float(cell["base_danger"])
-
-            # Recalculate crime contribution with perturbed value
-            # Remove original crime contribution, add perturbed
-            orig_crime_contrib = (min(orig_crime / 600.0, 1.0)) * 0.25
-            new_crime_contrib = (min(perturbed_crime / 600.0, 1.0)) * 0.25
-            danger = danger - orig_crime_contrib + new_crime_contrib
-
-            # Apply temporal modifiers
-            danger *= _time_of_day_modifier(hour)
-            danger *= _season_modifier(month)
-            danger *= _weekend_modifier(day_of_week, hour)
-
-            # Night-time crime amplification (additive on top of 1.6x night multiplier)
-            if (hour >= 22 or hour <= 4) and perturbed_crime > 100:
-                crime_night_penalty = min((perturbed_crime - 100) / 2000.0, 0.15)
-                danger += crime_night_penalty
-
-            # Infrastructure isolation penalty (proportional, stronger weight)
-            isolation_danger = (perturbed_hospital_km / 50.0) * ((100 - perturbed_emergency) / 100.0) * 0.60
-            danger += isolation_danger
-
-            # Add calibrated noise (real-world variation)
-            danger += rng.normal(0, 0.04)
-            danger = float(np.clip(danger, 0, 1))
-
-            # Convert to safety score (0-100, 100 = safest)
-            safety_score = float(np.clip((1.0 - danger) * 100.0, 0, 100))
-
-            row = {
-                # Grid identity
-                "grid_lat": cell["grid_lat"],
-                "grid_lon": cell["grid_lon"],
-
-                # Temporal
+            expanded_rows.append({
+                **row.to_dict(),
                 "hour": hour,
                 "month": month,
                 "day_of_week": day_of_week,
+                "safety_score_target": safety_score_target,
+            })
 
-                # All features from unified grid (original values)
-                **{col: cell[col] for col in grid.columns
-                   if col not in ["grid_lat", "grid_lon", "cell_id", "base_danger",
-                                  "crime_rate_per_100k", "nearest_hospital_proxy_km",
-                                  "emergency_availability_score", "ambulance_response_score"]},
-
-                # Perturbed features (model sees these paired with the label)
-                "crime_rate_per_100k": perturbed_crime,
-                "nearest_hospital_proxy_km": perturbed_hospital_km,
-                "emergency_availability_score": perturbed_emergency,
-                "ambulance_response_score": perturbed_ambulance,
-
-                # Label
-                "safety_score_target": safety_score,
-            }
-            rows.append(row)
-
-    training_df = pd.DataFrame(rows)
-    print(f"Generated: {len(training_df)} training samples")
-
-    # Split
-    from sklearn.model_selection import train_test_split
-
-    train_val, test = train_test_split(
-        training_df, test_size=0.15, random_state=RANDOM_SEED
-    )
-    train, val = train_test_split(
-        train_val, test_size=0.176, random_state=RANDOM_SEED  # 0.176 of 0.85 ≈ 0.15
-    )
-
-    train.to_parquet(TRAINING_DIR / "safety_score_train.parquet", index=False)
-    val.to_parquet(TRAINING_DIR / "safety_score_val.parquet", index=False)
-    test.to_parquet(TRAINING_DIR / "safety_score_test.parquet", index=False)
-
-    print(f"Train: {len(train)}, Val: {len(val)}, Test: {len(test)}")
-    print(f"Saved to: {TRAINING_DIR}")
+    training_df = pd.DataFrame(expanded_rows)
+    print(f"Generated {len(training_df)} training samples.")
+    
+    out_path = TRAINING_DIR / "training_samples.parquet"
+    training_df.to_parquet(out_path, index=False)
+    print(f"Saved to: {out_path}")
 
     return training_df
 

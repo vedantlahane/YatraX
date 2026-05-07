@@ -380,9 +380,18 @@ def ingest_all_health() -> pd.DataFrame:
     print(f"Combined: {len(combined)} unique facilities")
 
     coord_pct = float(combined["latitude"].notna().mean() * 100) if "latitude" in combined.columns else 0.0
+    missing_coords = combined["latitude"].isna().sum() if "latitude" in combined.columns else len(combined)
+    print(f"Facilities kept: {len(combined)}")
+    print(f"Facilities dropped for missing coordinates: {missing_coords}")
     print(f"Coordinate coverage: {coord_pct:.1f}%")
+    if coord_pct < 5.0:
+        raise ValueError(f"Coordinate coverage too low ({coord_pct:.1f}%), failing health ingestion.")
 
     factors = compute_health_factors(combined)
+    if factors.empty:
+        print("No spatial health factors could be computed!")
+        return pd.DataFrame()
+    print(f"Unique grid cells covered: {len(factors)}")
 
     output_path = PROCESSED_DIR / "health_grid.parquet"
     factors.to_parquet(output_path, index=False)
